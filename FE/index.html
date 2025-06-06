@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard | Ký số & Mã hóa</title>
+    <link rel="stylesheet" href="static/main.css"> <!-- Đã cập nhật đường dẫn CSS -->
+</head>
+<body>
+    <div class="container">
+        <h1>Hệ thống Giao dịch Ký số & Mã hóa</h1>
+        <p>Chào mừng, <span id="current_user_display">Guest</span>!</p>
+        <ul class="menu">
+            <li><a href="generate_key.html">Sinh/Lưu khóa</a></li>
+            <li><a href="create_transaction.html">Tạo giao dịch</a></li>
+            <li><a href="sign_encrypt.html">Ký số & Mã hóa giao dịch</a></li>
+            <li><a href="decrypt_verify.html">Giải mã & Xác thực giao dịch</a></li>
+            <li><a href="log.html">Xem log thao tác</a></li>
+        </ul>
+        <button id="logoutButton">Đăng xuất</button>
+    </div>
+    <script>
+        const backendBaseUrl = "http://127.0.0.1:5560";
+
+        // Kiểm tra trạng thái đăng nhập khi trang được tải
+        window.onload = async () => {
+            const res = await fetch(`${backendBaseUrl}/api/check_login_status`, {
+                credentials: 'include'
+            });
+            const data = await res.json();
+            if (data.logged_in) {
+                document.getElementById('current_user_display').innerText = data.username;
+            } else {
+                window.location.href = 'login.html'; // Chuyển hướng nếu chưa đăng nhập
+            }
+        };
+
+        // Xử lý nút đăng xuất
+        document.getElementById('logoutButton').onclick = async () => {
+            const res = await fetch(`${backendBaseUrl}/api/logout`, {
+                method: "POST",
+                credentials: 'include'
+            });
+            const data = await res.json();
+            if (data.success) {
+                window.location.href = 'login.html'; // Chuyển về trang login sau khi đăng xuất
+            } else {
+                alert("Lỗi khi đăng xuất: " + data.message);
+            }
+        };
+    </script>
+</body>
+</html>

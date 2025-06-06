@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sinh/Lưu khóa</title>
+    <link rel="stylesheet" href="static/main.css"> <!-- Đã cập nhật đường dẫn CSS -->
+</head>
+<body>
+    <div class="container">
+        <h2>Sinh khóa cá nhân</h2>
+        <p>Bạn đang sinh khóa cho tài khoản: <strong id="current_user_display"></strong></p>
+        <form id="generateKeyForm">
+            <label>Loại khóa:</label>
+            <select id="key_type" required>
+                <option value="">-- Chọn --</option>
+                <option value="ECDSA">ECDSA</option>
+                <option value="ML-DSA">ML-DSA</option>
+                <option value="RSA">RSA</option>
+            </select>
+            <label>Passphrase bảo vệ khóa (để lưu private key cục bộ):</label>
+            <input type="password" id="passphrase" required>
+            <button type="submit">Sinh khóa</button>
+        </form>
+        <div id="result"></div>
+        <a href="index.html">Quay lại Dashboard</a>
+    </div>
+    <script>
+        const backendBaseUrl = "http://127.0.0.1:5560";
+        const appHelperBaseUrl = "http://127.0.0.1:8080";
+        let currentUsername = null;
+
+        window.onload = async () => {
+            const res = await fetch(`${backendBaseUrl}/api/check_login_status`, {
+                credentials: 'include'
+            });
+            const data = await res.json();
+            if (data.logged_in) {
+                currentUsername = data.username;
+                document.getElementById('current_user_display').innerText = currentUsername;
+            } else {
+                window.location.href = 'login.html';
+            }
+        };
+
+        document.getElementById('generateKeyForm').onsubmit = async (e) => {
+            e.preventDefault();
+            const username = currentUsername; 
+            const key_type = document.getElementById('key_type').value;
+            const passphrase = document.getElementById('passphrase').value;
+
+            if (!username) {
+                document.getElementById('result').innerText = 'Không thể xác định người dùng. Vui lòng đăng nhập lại.';
+                return;
+            }
+
+            document.getElementById('result').innerText = 'Đang sinh khóa trên máy client...';
+
+            try {
+                // Bước 1: Gọi App Helper để sinh khóa và lưu private key cục bộ
+                const clientRes = await fetch(`${appHelperBaseUrl}/generate_key`, { 
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({username, key_type, passphrase})
+                });
+                const clientData = await clientRes.json();
+
+                if (!clientRes.ok || !clientData.success) {
+                    document.getElementById('result').innerText = `Lỗi sinh khóa trên client: ${clientData.message || 'Unknown error'}`;
+                    return;
+                }
+
+                // Bước 2: Gửi public key từ App Helper về Server Backend để lưu trữ
+                const backendRes = await fetch(`${backendBaseUrl}/api/generate_key`, { 
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({
+                        username: username, 
+                        key_type: key_type,
+                        public_key: clientData.public_key 
+                    }),
+                    credentials: 'include' // Gửi session cookie
+                });
+                const backendData = await backendRes.json();
+
+                if (backendRes.ok && backendData.success) {
+                    document.getElementById('result').innerText = `Đã sinh khóa trên client và lưu Public Key trên server. Fingerprint: ${backendData.fingerprint}`;
+                } else {
+                    document.getElementById('result').innerText = `Lỗi lưu Public Key trên server: ${backendData.message || 'Unknown error'}`;
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('result').innerText = `Lỗi kết nối hoặc xử lý: ${error.message}`;
+            }
+        }
+    </script>
+</body>
+</html>

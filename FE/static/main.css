@@ -1,0 +1,86 @@
+body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    background: #f8f8fa;
+    margin: 0;
+    padding: 0;
+}
+.container {
+    max-width: 480px;
+    margin: 40px auto;
+    background: #fff;
+    padding: 32px;
+    border-radius: 12px;
+    box-shadow: 0 2px 24px #0001;
+}
+h1, h2 {
+    text-align: center;
+    color: #1976d2;
+    margin-bottom: 20px;
+}
+form label {
+    margin-top: 14px;
+    display: block;
+    font-weight: 500;
+}
+input, select, button {
+    width: 100%;
+    padding: 10px;
+    margin-top: 6px;
+    margin-bottom: 12px;
+    border-radius: 8px;
+    border: 1px solid #ccc;
+    font-size: 1rem;
+}
+input[type="file"] {
+    padding: 0;
+}
+button {
+    background: #1976d2;
+    color: white;
+    border: none;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+button:hover {
+    background: #125ea7;
+}
+.menu {
+    list-style: none;
+    padding: 0;
+    margin: 24px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+.menu li a {
+    display: block;
+    padding: 14px;
+    background: #eee;
+    border-radius: 8px;
+    color: #1976d2;
+    text-decoration: none;
+    font-weight: bold;
+    font-size: 1.1em;
+    transition: background 0.2s, color 0.2s;
+}
+.menu li a:hover {
+    background: #1976d2;
+    color: #fff;
+}
+#result {
+    margin: 18px 0 0 0;
+    color: #388e3c;
+    font-weight: 500;
+}
+a {
+    display: block;
+    margin-top: 16px;
+    color: #888;
+    text-align: right;
+    text-decoration: none;
+    font-size: 0.95em;
+}
+a:hover {
+    color: #1976d2;
+}

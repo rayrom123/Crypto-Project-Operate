@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tạo giao dịch</title>
+    <link rel="stylesheet" href="static/main.css"> <!-- Đã cập nhật đường dẫn CSS -->
+</head>
+<body>
+    <div class="container">
+        <h2>Tạo giao dịch mới</h2>
+        <p>Bạn đang tạo giao dịch với vai trò người mua: <strong id="current_user_display"></strong></p>
+        <form id="createTransactionForm">
+            <label>Mã đơn hàng:</label>
+            <input type="text" id="order_id" required>
+            <label>Người mua (sẽ tự động là tài khoản hiện tại):</label>
+            <input type="text" id="buyer_display" disabled> <!-- Chỉ hiển thị, không cho sửa -->
+            <input type="hidden" id="buyer"> <!-- Giá trị thực để gửi đi -->
+            <label>Người bán:</label>
+            <input type="text" id="seller" required>
+            <label>Số tiền:</label>
+            <input type="number" id="amount" required>
+            <label>Đơn vị tiền tệ:</label>
+            <input type="text" id="currency" value="VND" required>
+            <label>Danh sách sản phẩm (cách nhau dấu phẩy):</label>
+            <input type="text" id="items" required>
+            <button type="submit">Tạo giao dịch</button>
+        </form>
+        <div id="result"></div>
+        <a href="index.html">Quay lại Dashboard</a>
+    </div>
+    <script>
+        const backendBaseUrl = "http://127.0.0.1:5560";
+        let currentUsername = null;
+
+        window.onload = async () => {
+            const res = await fetch(`${backendBaseUrl}/api/check_login_status`, {
+                credentials: 'include'
+            });
+            const data = await res.json();
+            if (data.logged_in) {
+                currentUsername = data.username;
+                document.getElementById('current_user_display').innerText = currentUsername;
+                document.getElementById('buyer_display').value = currentUsername; // Hiển thị username
+                document.getElementById('buyer').value = currentUsername; // Đặt giá trị cho input hidden
+            } else {
+                window.location.href = 'login.html';
+            }
+        };
+
+        document.getElementById('createTransactionForm').onsubmit = async (e) => {
+            e.preventDefault();
+            const body = {
+                order_id: document.getElementById('order_id').value,
+                buyer: document.getElementById('buyer').value, // Lấy từ input hidden
+                seller: document.getElementById('seller').value,
+                amount: document.getElementById('amount').value,
+                currency: document.getElementById('currency').value,
+                items: document.getElementById('items').value,
+            };
+
+            document.getElementById('result').innerText = 'Đang tạo giao dịch...';
+
+            try {
+                const res = await fetch(`${backendBaseUrl}/api/create_transaction`, {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify(body),
+                    credentials: 'include' // Gửi session cookie
+                });
+                const data = await res.json();
+                document.getElementById('result').innerText = data.message;
+                if (data.success) {
+                    // Sau khi tạo thành công, có thể reset form hoặc chuyển hướng
+                    document.getElementById('createTransactionForm').reset();
+                    document.getElementById('buyer_display').value = currentUsername; // Giữ lại tên người mua
+                    document.getElementById('buyer').value = currentUsername;
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('result').innerText = `Lỗi kết nối hoặc xử lý: ${error.message}`;
+            }
+        }
+    </script>
+</body>
+</html>
