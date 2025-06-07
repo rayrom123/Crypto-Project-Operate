@@ -14,13 +14,24 @@ app = Flask(__name__)
 # Cấu hình CORS chi tiết hơn
 CORS(app, resources={
     r"/*": {
-        "origins": ["https://crypto-project-operate.vercel.app"],
+        "origins": ["http://localhost:5560", "https://crypto-project-operate.vercel.app"],
         "methods": ["GET", "POST", "OPTIONS"],
         "allow_headers": ["Content-Type"],
-        "supports_credentials": True
+        "supports_credentials": True,
+        "expose_headers": ["Content-Type", "X-CSRFToken"],
+        "allow_credentials": True
     }
 })
-app.secret_key = "secret_key"
+
+# Cấu hình session
+app.config.update(
+    SECRET_KEY="secret_key",
+    SESSION_COOKIE_SAMESITE='None',  # Cho phép cross-site cookies
+    SESSION_COOKIE_SECURE=False,     # False cho môi trường development (HTTP)
+    SESSION_COOKIE_HTTPONLY=True,    # Bảo vệ cookie khỏi JavaScript
+    SESSION_COOKIE_DOMAIN=None,      # Cho phép tất cả domain
+    PERMANENT_SESSION_LIFETIME=datetime.timedelta(days=7)  # Session tồn tại 7 ngày
+)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploaded_files")
@@ -116,6 +127,7 @@ def api_login_user():
 
     if user_info and verify_password(user_info["password_hash"], password):
         session['username'] = username
+        session.permanent = True  # Đặt session là permanent
         log_action("User Login", f"User '{username}' logged in successfully.", username)
         return jsonify({"success": True, "message": f"Đăng nhập thành công cho user '{username}'."}), 200
     else:
