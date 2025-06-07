@@ -1,18 +1,12 @@
-# Python cache files
-__pycache__/
-*pyc
+# Bỏ toàn bộ file trong Client/transactions
+Client/transactions/**
 
-# Generated JSON files
-*.json
+# Bỏ toàn bộ file trong Client/user_keys
+Client/user_keys/**
 
+# Bỏ cache Python trong Client/modules và Server/modules
+Client/modules/__pycache__/
+Server/modules/__pycache__/
 
-# Generated key files
-*.pem
-*.pub
-*.priv
-
-
-# Environment files
-.env
-
-
+# Bỏ file môi trường trong Server
+Server/.env
