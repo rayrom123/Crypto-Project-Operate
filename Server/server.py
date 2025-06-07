@@ -156,26 +156,26 @@ def api_check_login_status():
         return jsonify({"logged_in": True, "username": session['username']}), 200
     return jsonify({"logged_in": False}), 200
 
-# ==== API Upload Transaction (File giao dịch đã mã hóa) ====
-@app.route("/api/upload_transaction", methods=["POST"])
-@login_required
-def upload_transaction():
-    from_user = session['username']
-    to_user = request.form.get("to_user")
-    f = request.files['file']
-    filename = f.filename
-    f.save(os.path.join(UPLOAD_DIR, filename))
-    # Ghi vào inbox
-    data = []
-    if os.path.exists(INBOX_FILE):
-        with open(INBOX_FILE, "r", encoding="utf-8") as ff:
-            try: data = json.load(ff)
-            except: data = []
-    data.append({"file": filename, "from": from_user, "to": to_user, "timestamp": datetime.datetime.now().isoformat()})
-    with open(INBOX_FILE, "w", encoding="utf-8") as ff:
-        json.dump(data, ff, indent=2, ensure_ascii=False)
-    log_action("upload", f"{from_user} gửi file {filename} cho {to_user}", from_user)
-    return jsonify({"success": True, "message": f"Đã upload file {filename} cho {to_user}"})
+# # ==== API Upload Transaction (File giao dịch đã mã hóa) ====
+# @app.route("/api/upload_transaction", methods=["POST"])
+# @login_required
+# def upload_transaction():
+#     from_user = session['username']
+#     to_user = request.form.get("to_user")
+#     f = request.files['file']
+#     filename = f.filename
+#     f.save(os.path.join(UPLOAD_DIR, filename))
+#     # Ghi vào inbox
+#     data = []
+#     if os.path.exists(INBOX_FILE):
+#         with open(INBOX_FILE, "r", encoding="utf-8") as ff:
+#             try: data = json.load(ff)
+#             except: data = []
+#     data.append({"file": filename, "from": from_user, "to": to_user, "timestamp": datetime.datetime.now().isoformat()})
+#     with open(INBOX_FILE, "w", encoding="utf-8") as ff:
+#         json.dump(data, ff, indent=2, ensure_ascii=False)
+#     log_action("upload", f"{from_user} gửi file {filename} cho {to_user}", from_user)
+#     return jsonify({"success": True, "message": f"Đã upload file {filename} cho {to_user}"})
 
 # ==== API get inbox (hộp thư đến) ====
 @app.route("/api/get_inbox", methods=["GET"])
