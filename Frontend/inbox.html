@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Hộp thư đến (Inbox)</title>
+    <link rel="stylesheet" href="main.css">
+</head>
+<body>
+    <div class="container">
+        <h2>Hộp thư đến của bạn</h2>
+        <div id="inbox_list">Đang tải...</div>
+        <a href="index.html">Quay lại Dashboard</a>
+    </div>
+    <script>
+        const ServerBaseUrl = "http://127.0.0.1:8000";
+        window.onload = async () => {
+            const res = await fetch(`${ServerBaseUrl}/api/get_inbox`, {
+                credentials: 'include'
+            });
+            const data = await res.json();
+            const inboxDiv = document.getElementById('inbox_list');
+            if (!data.success) {
+                inboxDiv.innerText = 'Không thể tải hộp thư đến: ' + (data.message || 'Lỗi không xác định');
+                return;
+            }
+            if (!data.inbox.length) {
+                inboxDiv.innerHTML = "<i>Không có file giao dịch nào trong hộp thư đến của bạn.</i>";
+                return;
+            }
+            inboxDiv.innerHTML = "<ul>" + data.inbox.map(f =>
+                `<li>
+                    <b>${f.file}</b> | 
+                    Từ: <span>${f.from}</span> | 
+                    Lúc: <span>${f.timestamp}</span> | 
+                    <a href="${ServerBaseUrl}/api/download/transaction/${f.file}" target="_blank">Tải về</a>
+                </li>`
+            ).join("") + "</ul>";
+
+        }
+    </script>
+</body>
+</html>
