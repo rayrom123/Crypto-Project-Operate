@@ -15,7 +15,14 @@ app = Flask(__name__)
 CORS(app, supports_credentials=True)
 app.secret_key = "secret_key"  
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+if getattr(sys, 'frozen', False):
+    # Nếu ứng dụng đang chạy dưới dạng đóng gói (ví dụ: PyInstaller)
+    # Lấy đường dẫn của file .exe
+    application_path = os.path.dirname(sys.executable)
+else:
+    # Nếu ứng dụng đang chạy dưới dạng file .py bình thường
+    application_path = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = application_path
 KEY_DIR = os.path.join(BASE_DIR, "user_keys")
 TRANSACTION_DIR = os.path.join(BASE_DIR, "transactions")
 os.makedirs(KEY_DIR, exist_ok=True)
