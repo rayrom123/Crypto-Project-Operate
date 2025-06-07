@@ -1,31 +1,33 @@
 <!DOCTYPE html>
 <html lang="vi">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Dashboard | Ký số & Mã hóa Giao dịch</title>
-    <link rel="stylesheet" href="main.css">
-</head>
-<body>
-<div class="container">
-    <h1>Ký số & Mã hóa Giao dịch</h1>
-    <button class="logout-btn" onclick="logout()">Đăng xuất</button>
-    <ul class="menu">
+    <link rel="stylesheet" href="main.css" />
+  </head>
+  <body>
+    <div class="container">
+      <h1>Ký số & Mã hóa Giao dịch</h1>
+      <button class="logout-btn" onclick="logout()">Đăng xuất</button>
+      <ul class="menu">
         <li><a href="generate_key.html">Sinh khóa</a></li>
         <li><a href="create_transaction.html">Tạo giao dịch</a></li>
         <li><a href="sign_encrypt.html">Ký số & Mã hóa giao dịch</a></li>
         <li><a href="decrypt_verify.html">Giải mã & Xác thực giao dịch</a></li>
         <li><a href="inbox.html">Hộp thư đến (nhận file)</a></li>
         <li><a href="log.html">Xem nhật ký hệ thống</a></li>
-        <li><a href="https://crypto-project-operate.vercel.app/client.exe">Download app để thực thi khóa mã hóa</a></li>
-    </ul>
-</div>
-<script>
-const ServerBaseUrl = "https://crypto-project-operate.onrender.com";
-const ClientBaseUrl = "http://127.0.0.1:5550";
-function logout() {
-    fetch('/api/logout', {method:'POST'}).then(()=>location.href="login.html");
-}
-</script>
-</body>
+        <li><a href="/client.exe">Download app để thực thi khóa mã hóa</a></li>
+      </ul>
+    </div>
+    <script>
+      const ServerBaseUrl = "https://crypto-project-operate.onrender.com";
+      const ClientBaseUrl = "http://127.0.0.1:5550";
+      function logout() {
+        fetch("/api/logout", { method: "POST" }).then(
+          () => (location.href = "login.html")
+        );
+      }
+    </script>
+  </body>
 </html>
