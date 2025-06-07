@@ -9,15 +9,19 @@ from dilithium_py.ml_dsa import ML_DSA_44
 from modules.crypto_utils import (
     load_pem_pub, public_key_fingerprint, ecdsa_verify, rsa_encrypt, aes_encrypt
 )
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 app = Flask(__name__)
 # Cấu hình CORS chi tiết hơn
 CORS(app, resources={
     r"/*": {
-        "origins": ["http://localhost:5560", "https://crypto-project-operate.vercel.app"],
+        "origins": os.getenv("ALLOWED_ORIGINS", "https://crypto-project-operate.vercel.app").split(","),
         "methods": ["GET", "POST", "OPTIONS"],
         "allow_headers": ["Content-Type"],
-        "supports_credentials": True,
+        "supports_credentials": os.getenv("CORS_SUPPORTS_CREDENTIALS", "True").lower() == "true",
         "expose_headers": ["Content-Type", "X-CSRFToken"],
         "allow_credentials": True
     }
@@ -25,12 +29,14 @@ CORS(app, resources={
 
 # Cấu hình session
 app.config.update(
-    SECRET_KEY="secret_key",
-    SESSION_COOKIE_SAMESITE='None',  # Cho phép cross-site cookies
-    SESSION_COOKIE_SECURE=False,     # False cho môi trường development (HTTP)
-    SESSION_COOKIE_HTTPONLY=True,    # Bảo vệ cookie khỏi JavaScript
-    SESSION_COOKIE_DOMAIN=None,      # Cho phép tất cả domain
-    PERMANENT_SESSION_LIFETIME=datetime.timedelta(days=7)  # Session tồn tại 7 ngày
+    SECRET_KEY=os.getenv("SECRET_KEY", "secret_key"),
+    SESSION_COOKIE_SAMESITE=os.getenv("SESSION_COOKIE_SAMESITE", "None"),
+    SESSION_COOKIE_SECURE=os.getenv("SESSION_COOKIE_SECURE", "True").lower() == "true",
+    SESSION_COOKIE_HTTPONLY=os.getenv("SESSION_COOKIE_HTTPONLY", "True").lower() == "true",
+    SESSION_COOKIE_DOMAIN=None,
+    PERMANENT_SESSION_LIFETIME=datetime.timedelta(
+        seconds=int(os.getenv("PERMANENT_SESSION_LIFETIME", "604800"))
+    )
 )
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
