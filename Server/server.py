@@ -11,7 +11,15 @@ from modules.crypto_utils import (
 )
 
 app = Flask(__name__)
-CORS(app, supports_credentials=True)
+# Cấu hình CORS chi tiết hơn
+CORS(app, resources={
+    r"/*": {
+        "origins": ["http://localhost:3000", "https://your-frontend-domain.vercel.app"],
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type"],
+        "supports_credentials": True
+    }
+})
 app.secret_key = "secret_key"
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -319,6 +327,23 @@ def get_log():
     with open(LOG_FILE, "r", encoding="utf-8") as f:
         logs = f.read()
     return jsonify({"success": True, "log": logs})
+
+# Thêm route cho root path
+@app.route("/", methods=["GET"])
+def root():
+    return jsonify({
+        "status": "running",
+        "message": "Crypto Backend API is running",
+        "version": "1.0.0"
+    })
+
+# Thêm health check endpoint
+@app.route("/health", methods=["GET"])
+def health_check():
+    return jsonify({
+        "status": "healthy",
+        "timestamp": datetime.datetime.now().isoformat()
+    })
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000, debug=True)
