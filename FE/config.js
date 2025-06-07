@@ -1,4 +1,4 @@
 const config = {
-  backendBaseUrl: "https://your-app-name.onrender.com", // Thay thế bằng URL Render của bạn
-  appHelperBaseUrl: "https://your-app-name.onrender.com/app-helper", // Thay thế bằng URL Render của bạn
+  backendBaseUrl: "https://crypto-backend-mfu5.onrender.com", // Backend URL đã được deploy
+  appHelperBaseUrl: "https://crypto-app-helper.onrender.com", // URL của App Helper sau khi deploy
 };
