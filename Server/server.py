@@ -14,7 +14,7 @@ app = Flask(__name__)
 # Cấu hình CORS chi tiết hơn
 CORS(app, resources={
     r"/*": {
-        "origins": ["http://localhost:5560", "https://crypto-project-operate.vercel.app"],
+        "origins": ["https://crypto-project-operate.vercel.app"],
         "methods": ["GET", "POST", "OPTIONS"],
         "allow_headers": ["Content-Type"],
         "supports_credentials": True
