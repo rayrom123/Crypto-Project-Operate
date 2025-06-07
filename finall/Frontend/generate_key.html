@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sinh/Lưu khóa</title>
+    <link rel="stylesheet" href="main.css">
+</head>
+<body>
+    <div class="container">
+        <h2>Sinh khóa cá nhân</h2>
+        <p>Bạn đang sinh khóa cho tài khoản: <strong id="current_user_display"></strong></p>
+        <form id="generateKeyForm" autocomplete="off">
+            <label>Loại khóa:</label>
+            <select id="key_type" required>
+                <option value="">-- Chọn --</option>
+                <option value="ECDSA">ECDSA</option>
+                <option value="ML-DSA">ML-DSA</option>
+                <option value="RSA">RSA</option>
+            </select>
+            <label>Passphrase bảo vệ khóa (lưu private key cục bộ):</label>
+            <input type="password" id="passphrase" required minlength="4" autocomplete="new-password">
+            <button type="submit" id="submitBtn">Sinh khóa</button>
+        </form>
+        <div id="result"></div>
+        <a href="index.html">Quay lại Dashboard</a>
+    </div>
+    <script>
+        const ServerBaseUrl = "http://127.0.0.1:8000";
+        const ClientBaseUrl = "http://127.0.0.1:5550";
+        let currentUsername = null;
+        const resultDiv = document.getElementById('result');
+        const submitBtn = document.getElementById('submitBtn');
+        let loading = false;
+
+        function showMessage(msg, type = 'info') {
+            resultDiv.innerHTML = (type === 'info' && loading) 
+                ? `<span class="spinner"></span>${msg}` 
+                : msg;
+            resultDiv.className = '';
+            resultDiv.classList.add(type);
+            resultDiv.style.display = 'block';
+        }
+        function hideMessage() {
+            resultDiv.innerText = '';
+            resultDiv.className = '';
+            resultDiv.style.display = 'none';
+        }
+
+        function setLoading(state) {
+            loading = state;
+            submitBtn.disabled = !!state;
+        }
+
+        // Lấy tên user hiện tại
+        window.onload = async () => {
+            try {
+                setLoading(true);
+                showMessage("Đang kiểm tra đăng nhập...", 'info');
+                const res = await fetch(`${ServerBaseUrl}/api/check_login_status`, { credentials: 'include' });
+                const data = await res.json();
+                if (data.logged_in) {
+                    currentUsername = data.username;
+                    document.getElementById('current_user_display').innerText = currentUsername;
+                    hideMessage();
+                } else {
+                    window.location.href = 'login.html';
+                }
+            } catch {
+                showMessage("Không kết nối được đến máy chủ. Vui lòng thử lại.", 'error');
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        document.getElementById('generateKeyForm').onsubmit = async (e) => {
+            e.preventDefault();
+            const username = currentUsername; 
+            const key_type = document.getElementById('key_type').value;
+            const passphrase = document.getElementById('passphrase').value;
+
+            if (!username) {
+                showMessage('Không thể xác định người dùng. Vui lòng đăng nhập lại.', 'error');
+                return;
+            }
+
+            if (passphrase.length < 4) {
+                showMessage('Passphrase cần tối thiểu 4 ký tự.', 'error');
+                return;
+            }
+
+            setLoading(true);
+            showMessage('Đang sinh khóa trên máy client...', 'info');
+
+            try {
+                // Gọi App Helper client sinh khóa
+                const clientRes = await fetch(`${ClientBaseUrl}/api/generate_key`, { 
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({username, key_type, passphrase})
+                });
+                let clientData;
+                try { clientData = await clientRes.json(); } catch { clientData = {}; }
+
+                if (!clientRes.ok || !clientData.success) {
+                    let msg = clientData && clientData.message ? clientData.message : 
+                        (clientRes.status === 0 || clientRes.status === 404 ? 
+                            "Không thể kết nối App Helper. Đảm bảo ứng dụng client đang chạy." : "Lỗi không xác định khi sinh khóa.");
+                    showMessage(`Lỗi sinh khóa trên client: ${msg}`, 'error');
+                    setLoading(false);
+                    return;
+                }
+
+                // Gửi public key về backend
+                showMessage('Đang lưu Public Key trên server...', 'info');
+                const backendRes = await fetch(`${ServerBaseUrl}/api/upload_pubkey`, { 
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({
+                        username, key_type, public_key: clientData.public_key 
+                    }),
+                    credentials: 'include'
+                });
+                let backendData;
+                try { backendData = await backendRes.json(); } catch { backendData = {}; }
+
+                if (backendRes.ok && backendData.success) {
+                    showMessage(
+                        `✅ Đã sinh khóa trên client & lưu Public Key lên server.<br><b>Fingerprint:</b> <code>${backendData.fingerprint || ''}</code>`,
+                        'success'
+                    );
+                    document.getElementById('generateKeyForm').reset();
+                } else {
+                    showMessage(`Lỗi lưu Public Key trên server: ${backendData.message || 'Unknown error'}`, 'error');
+                }
+            } catch (error) {
+                showMessage(`Lỗi kết nối hoặc xử lý: ${error.message}`, 'error');
+            }
+            setLoading(false);
+        }
+    </script>
+</body>
+</html>

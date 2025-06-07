@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Giải mã & Xác thực giao dịch</title>
+    <link rel="stylesheet" href="main.css">
+</head>
+<body>
+    <div class="container">
+        <h2>Giải mã & Xác thực giao dịch</h2>
+        <p>Bạn đang giải mã với vai trò người bán: <strong id="current_user_display"></strong></p>
+        <form id="decryptVerifyForm">
+            <label>Chọn file giao dịch đã mã hóa (.encrypted):</label>
+            <input type="file" id="encrypted_file" accept=".encrypted" required>
+            
+            <label>Tên người nhận (tài khoản của bạn):</label>
+            <input type="text" id="receiver_name_display" disabled>
+            <input type="hidden" id="receiver_name">
+
+            <label>Passphrase RSA:</label>
+            <input type="password" id="rsa_passphrase" required>
+            <button type="submit">Giải mã & Xác thực</button>
+        </form>
+        <div id="result"></div>
+        <a href="index.html">Quay lại Dashboard</a>
+    </div>
+    <script>
+        const ClientBaseUrl = "http://127.0.0.1:5550";
+        const ServerBaseUrl = "http://127.0.0.1:8000";
+        let currentUsername = null;
+
+        window.onload = async () => {
+            const res = await fetch(`${ServerBaseUrl}/api/check_login_status`, {
+                credentials: 'include'
+            });
+            const data = await res.json();
+            if (data.logged_in) {
+                currentUsername = data.username;
+                document.getElementById('current_user_display').innerText = currentUsername;
+                document.getElementById('receiver_name_display').value = currentUsername;
+                document.getElementById('receiver_name').value = currentUsername;
+            } else {
+                window.location.href = 'login.html';
+            }
+        };
+
+        document.getElementById('decryptVerifyForm').onsubmit = async (e) => {
+            e.preventDefault();
+
+            const encrypted_file = document.getElementById('encrypted_file').files[0];
+            const receiver_name = document.getElementById('receiver_name').value;
+            const rsa_passphrase = document.getElementById('rsa_passphrase').value;
+
+            if (!encrypted_file) {
+                document.getElementById('result').innerText = 'Vui lòng chọn file mã hóa.';
+                return;
+            }
+
+            document.getElementById('result').innerText = 'Đang giải mã và xác thực trên máy client...';
+
+            try {
+                // Gửi file lên app helper để giải mã
+                const fd = new FormData();
+                fd.append("encrypted_file", encrypted_file);
+                fd.append("receiver_name", receiver_name);
+                fd.append("rsa_passphrase", rsa_passphrase);
+
+                const clientDecryptRes = await fetch(`${ClientBaseUrl}/decrypt_transaction`, {
+                    method: "POST",
+                    body: fd
+                });
+                const clientDecryptData = await clientDecryptRes.json();
+
+                if (!clientDecryptRes.ok || !clientDecryptData.success) {
+                    document.getElementById('result').innerText = `Lỗi giải mã trên client: ${clientDecryptData.message || 'Unknown error'}`;
+                    return;
+                }
+
+                let verifyStatus = clientDecryptData.verify_results.map(res =>
+                    `${res.algo} (${res.signer}, ${res.fingerprint}): ${res.valid ? 'HỢP LỆ' : 'KHÔNG HỢP LỆ'}`
+                ).join('<br>');
+                document.getElementById('result').innerHTML = `Giải mã & Xác thực thành công!<br><h3>Nội dung giao dịch:</h3><pre>${JSON.stringify(clientDecryptData.order, null, 2)}</pre><h3>Kết quả xác thực chữ ký:</h3>${verifyStatus}`;
+
+                // (Tuỳ chọn) Nếu muốn gửi log xác thực về server thì gọi thêm fetch ở đây
+
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('result').innerText = `Lỗi kết nối hoặc xử lý: ${error.message}`;
+            }
+        }
+    </script>
+</body>
+</html>

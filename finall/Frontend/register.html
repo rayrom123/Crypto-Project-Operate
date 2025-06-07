@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Đăng ký tài khoản</title>
+    <link rel="stylesheet" href="main.css">
+</head>
+<body>
+<div class="container">
+    <h2>Đăng ký</h2>
+    <form id="registerForm">
+        <label>Username:</label>
+        <input type="text" id="username" required>
+        <label>Password:</label>
+        <input type="password" id="password" required>
+        <button type="submit">Đăng ký</button>
+    </form>
+    <div id="result"></div>
+    <a href="login.html">Đã có tài khoản? Đăng nhập</a>
+</div>
+<script>
+    const ServerBaseUrl = "http://127.0.0.1:8000";
+    const ClientBaseUrl = "http://127.0.0.1:5550";
+    document.getElementById('registerForm').onsubmit = async (e) => {
+        e.preventDefault();
+        const username = document.getElementById('username').value;
+        const password = document.getElementById('password').value;
+
+        document.getElementById('result').innerText = 'Đang đăng ký user...';
+
+        try {
+            const res = await fetch(`${ServerBaseUrl}/api/register`, {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({username, password}),
+                credentials: 'include' // Thêm credentials
+            });
+            const data = await res.json();
+            document.getElementById('result').innerText = data.message;
+            if (data.success) {
+                document.getElementById('registerForm').reset();
+                 window.location.href = "login.html";
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            document.getElementById('result').innerText = `Lỗi kết nối hoặc xử lý: ${error.message}`;
+        }
+    }
+</script>
+</body>
+</html>

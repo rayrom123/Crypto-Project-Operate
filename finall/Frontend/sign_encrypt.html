@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ký số & Mã hóa giao dịch</title>
+    <link rel="stylesheet" href="main.css">
+</head>
+<body>
+    <div class="container">
+        <h2>Ký số & Mã hóa giao dịch</h2>
+        <p>Bạn đang ký số với vai trò người mua: <strong id="current_user_display"></strong></p>
+        <form id="signEncryptForm">
+            <label>Chọn file giao dịch (.json) từ máy của bạn:</label>
+            <input type="file" id="order_file" accept=".json" required>
+            <label>Tên người ký (tài khoản của bạn):</label>
+            <input type="text" id="signer_name_display" disabled>
+            <input type="hidden" id="signer_name">
+            <label>Passphrase ECDSA:</label>
+            <input type="password" id="ecdsa_passphrase" required>
+            <label>Passphrase ML-DSA:</label>
+            <input type="password" id="mldsa_passphrase" required>
+            <label>Tên người nhận (người bán):</label>
+            <input type="text" id="receiver_name" required>
+            <button type="submit">Ký số & Mã hóa</button>
+        </form>
+        <div id="result"></div>
+        <div id="download_link"></div>
+        <a href="index.html">Quay lại Dashboard</a>
+    </div>
+    <script>
+        // Địa chỉ backend
+        const ServerBaseUrl = "http://127.0.0.1:8000";
+        const ClientBaseUrl = "http://127.0.0.1:5550";
+        let currentUsername = null;
+
+        // Khi vào trang, lấy username
+        window.onload = async () => {
+            const res = await fetch(`${ServerBaseUrl}/api/check_login_status`, {
+                credentials: 'include'
+            });
+            const data = await res.json();
+            if (data.logged_in) {
+                currentUsername = data.username;
+                document.getElementById('current_user_display').innerText = currentUsername;
+                document.getElementById('signer_name_display').value = currentUsername;
+                document.getElementById('signer_name').value = currentUsername;
+            } else {
+                window.location.href = 'login.html';
+            }
+        };
+
+        document.getElementById('signEncryptForm').onsubmit = async (e) => {
+            e.preventDefault();
+            document.getElementById('download_link').innerHTML = "";
+
+            const order_file = document.getElementById('order_file').files[0];
+            const signer_name = document.getElementById('signer_name').value;
+            const ecdsa_passphrase = document.getElementById('ecdsa_passphrase').value;
+            const mldsa_passphrase = document.getElementById('mldsa_passphrase').value;
+            const receiver_name = document.getElementById('receiver_name').value.trim();
+
+            if (!order_file || !receiver_name) {
+                document.getElementById('result').innerText = 'Vui lòng nhập đủ thông tin.';
+                return;
+            }
+
+            document.getElementById('result').innerText = 'Đang đọc nội dung giao dịch từ file local...';
+
+            // Đọc nội dung file order
+            const reader = new FileReader();
+            reader.onload = async function(event) {
+                let order_content = null;
+                let order_file_name = order_file.name;
+                try {
+                    order_content = JSON.parse(event.target.result);
+                } catch (e) {
+                    document.getElementById('result').innerText = "File giao dịch không đúng định dạng JSON!";
+                    return;
+                }
+
+                document.getElementById('result').innerText = 'Đang ký số trên máy client...';
+
+                // 2. Gọi App Helper (localhost) để ký số
+                try {
+                    const clientSignRes = await fetch(`${ClientBaseUrl}/api/sign_transaction`, {
+                        method: "POST",
+                        headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify({
+                            data_to_sign: order_content,
+                            signer_name: signer_name,
+                            ecdsa_passphrase: ecdsa_passphrase,
+                            mldsa_passphrase: mldsa_passphrase
+                        })
+                    });
+                    const clientSignData = await clientSignRes.json();
+
+                    if (!clientSignRes.ok || !clientSignData.success) {
+                        document.getElementById('result').innerText = `Lỗi ký số trên client: ${clientSignData.message || 'Unknown error'}`;
+                        return;
+                    }
+
+                    document.getElementById('result').innerText = 'Đã ký thành công trên client. Đang gửi server mã hóa...';
+
+                    // 3. Gửi signature, pubkey và NỘI DUNG GỐC lên server để mã hóa và lưu
+                    const formDataToBackendFinal = new FormData();
+                    formDataToBackendFinal.append("unique_filename_on_server", order_file_name);
+                    formDataToBackendFinal.append("signer_name", signer_name);
+                    formDataToBackendFinal.append("ecdsa_signature", clientSignData.ecdsa_signature);
+                    formDataToBackendFinal.append("mldsa_signature", clientSignData.mldsa_signature);
+                    formDataToBackendFinal.append("ecdsa_public_key", clientSignData.ecdsa_public_key);
+                    formDataToBackendFinal.append("mldsa_public_key", clientSignData.mldsa_public_key);
+                    formDataToBackendFinal.append("receiver_name", receiver_name);
+                    formDataToBackendFinal.append("order_content", JSON.stringify(order_content)); // Thêm nội dung gốc
+
+                    const backendEncryptRes = await fetch(`${ServerBaseUrl}/api/sign_encrypt`, {
+                        method: "POST",
+                        body: formDataToBackendFinal,
+                        credentials: 'include'
+                    });
+                    const backendEncryptData = await backendEncryptRes.json();
+
+                    if (backendEncryptRes.ok && backendEncryptData.success) {
+                        document.getElementById('result').innerText = `Ký và mã hóa thành công! File đã mã hóa: ${backendEncryptData.filename}`;
+                        document.getElementById('download_link').innerHTML = `
+                            <br><a href="${ServerBaseUrl}/api/download/transaction/${backendEncryptData.filename}" target="_blank" class="download-link">
+                                Tải file đã mã hóa về máy
+                            </a>
+                        `;
+                    } else {
+                        document.getElementById('result').innerText = `Lỗi mã hóa trên server: ${backendEncryptData.message || 'Unknown error'}`;
+                    }
+                } catch (error) {
+                    document.getElementById('result').innerText = `Lỗi khi ký số hoặc kết nối app helper: ${error.message}`;
+                }
+            };
+            reader.readAsText(order_file);
+        }
+    </script>
+</body>
+</html>
