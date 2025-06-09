@@ -96,7 +96,7 @@ def api_login_user():
         log_action("User Login", f"User '{username}' đăng nhập.", username)
         return jsonify({"success": True, "message": "Đăng nhập thành công."})
     log_action("Login Failed", f"Sai thông tin cho '{username}'", username)
-    return jsonify({"success": False, "message": "Sai username hoặc password."}), 401
+    return jsonify({"success": False, "message": "Sai username hoặc password."}), 400
 
 @app.route("/api/logout", methods=["POST"])
 @login_required
