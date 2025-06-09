@@ -34,7 +34,7 @@
                     document.getElementById('logContent').innerText = JSON.stringify(dataLog.log, null, 2) || 'Không có log.';
                 } else {
                     document.getElementById('logContent').innerText = `Lỗi tải log: ${dataLog.message || 'Unknown error'}`;
-                }
+                } 
             } else {
                 window.location.href = 'login.html'; // Chuyển hướng nếu chưa đăng nhập
             }
