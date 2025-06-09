@@ -123,7 +123,7 @@ def upload_transaction():
     filename = f.filename
     file_content = f.read()
 
-    mongo_db.inbox.insert_one({
+    mongo_db.transactions.insert_one({
         "file": filename,
         "content": Binary(file_content),
         "from": from_user,
@@ -139,7 +139,7 @@ def upload_transaction():
 @login_required
 def get_inbox():
     user = session['username']
-    inbox = list(mongo_db.inbox.find({"to": user}, {"_id": 0, "content": 0}))
+    inbox = list(mongo_db.transactions.find({"to": user}, {"_id": 0, "content": 0}))
     return jsonify({"success": True, "inbox": inbox})
 
 # ==== API Download Transaction (phân quyền) ==== #
@@ -147,7 +147,7 @@ def get_inbox():
 @login_required
 def download_transaction(filename):
     user = session['username']
-    file_info = mongo_db.inbox.find_one({"file": filename, "$or": [{"to": user}, {"from": user}]})
+    file_info = mongo_db.transactions.find_one({"file": filename, "$or": [{"to": user}, {"from": user}]})
 
     if not file_info:
         return jsonify({"success": False, "message": "Không có quyền tải file này"}), 403
