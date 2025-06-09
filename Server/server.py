@@ -4,6 +4,8 @@ import datetime
 from functools import wraps
 from flask import Flask, request, jsonify, session, redirect, url_for, send_from_directory
 from flask_cors import CORS
+from pymongo import MongoClient
+from bson.binary import Binary
 import bcrypt, base64
 from dotenv import load_dotenv
 
@@ -28,55 +30,35 @@ CORS(app,
 # Cấu hình session
 app.config.update(
     SECRET_KEY=os.getenv("SECRET_KEY", "secret_key"),
-    SESSION_COOKIE_SAMESITE='None',  # Cho phép cross-site cookies
-    SESSION_COOKIE_SECURE=True,      # Yêu cầu HTTPS
-    SESSION_COOKIE_HTTPONLY=True,    # Bảo vệ cookie khỏi JavaScript
-    SESSION_COOKIE_DOMAIN=None,      # Cho phép tất cả domain
-    PERMANENT_SESSION_LIFETIME=datetime.timedelta(days=7)  # Session tồn tại 7 ngày
+    SESSION_COOKIE_SAMESITE='None',
+    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_DOMAIN=None,
+    PERMANENT_SESSION_LIFETIME=datetime.timedelta(days=7)
 )
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-UPLOAD_DIR = os.path.join(BASE_DIR, "uploaded_files")
-PUBKEY_DIR = os.path.join(BASE_DIR, "public_keys")
-INBOX_FILE = os.path.join(BASE_DIR, "inbox.json")
-USER_DB_FILE = os.path.join(BASE_DIR, "users.json")
-LOG_FILE = os.path.join(BASE_DIR, "server_log.json")
+# --- MongoDB INIT --- #
+client = MongoClient(os.getenv("MONGODB_URI"))  # Mongo URI from .env
+mongo_db = client["crypto_app"]
 
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-os.makedirs(PUBKEY_DIR, exist_ok=True)
-
-# ==== Logging ====
+# ==== Logging -> MongoDB ==== #
 def log_action(action_type: str, message: str, user: str = "Guest"):
-    timestamp = datetime.datetime.now().isoformat()
-    log_entry = {
-        "timestamp": timestamp,
+    mongo_db.logs.insert_one({
+        "timestamp": datetime.datetime.utcnow(),
         "user": user,
         "action_type": action_type,
         "message": message
-    }
-    try:
-        logs = []
-        if os.path.exists(LOG_FILE) and os.stat(LOG_FILE).st_size > 0:
-            with open(LOG_FILE, "r", encoding="utf-8") as f:
-                file_content = f.read().strip()
-                if file_content:
-                    logs = json.loads(file_content)
-        logs.append(log_entry)
-        with open(LOG_FILE, "w", encoding="utf-8") as f:
-            json.dump(logs, f, indent=4, ensure_ascii=False)
-    except Exception as e:
-        print(f"[LOG ERROR] {e}")
+    })
 
-# ==== User Management ====
+# ==== User Management -> MongoDB ==== #
 def load_users():
-    if not os.path.exists(USER_DB_FILE) or os.stat(USER_DB_FILE).st_size == 0:
-        return {}
-    with open(USER_DB_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+    users = mongo_db.users.find()
+    return {user["_id"]: user for user in users}
 
 def save_users(users_data):
-    with open(USER_DB_FILE, "w", encoding="utf-8") as f:
-        json.dump(users_data, f, indent=4, ensure_ascii=False)
+    mongo_db.users.delete_many({})
+    for username, info in users_data.items():
+        mongo_db.users.insert_one({"_id": username, **info})
 
 def verify_password(stored_password, provided_password):
     if isinstance(stored_password, str):
@@ -93,7 +75,7 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-# ==== API Register ====
+# ==== Register/Login ==== #
 @app.route("/api/register", methods=["POST"])
 def api_register_user():
     data = request.get_json()
@@ -103,40 +85,28 @@ def api_register_user():
     if not username or not password:
         return jsonify({"success": False, "message": "Username và Password không được để trống."}), 400
 
-    users = load_users()
-    if username in users:
-        log_action("Registration Failed", f"Attempt to register existing username: '{username}'.", username)
-        return jsonify({"success": False, "message": "Username đã tồn tại. Vui lòng chọn username khác."}), 409
+    if mongo_db.users.find_one({"_id": username}):
+        log_action("Registration Failed", f"Username '{username}' tồn tại.", username)
+        return jsonify({"success": False, "message": "Username đã tồn tại."}), 409
 
-    hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-    users[username] = {"password_hash": hashed_password}
-    save_users(users)
-    log_action("User Registration", f"User '{username}' registered successfully.", username)
-    return jsonify({"success": True, "message": f"User '{username}' đã được đăng ký thành công."}), 200
+    hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    mongo_db.users.insert_one({"_id": username, "password_hash": hashed})
+    log_action("User Registration", f"User '{username}' đăng ký thành công.", username)
+    return jsonify({"success": True, "message": f"User '{username}' đăng ký thành công."})
 
-# ==== API Login ====
 @app.route("/api/login", methods=["POST"])
 def api_login_user():
     data = request.get_json()
-    username = data.get("username")
-    password = data.get("password")
-
-    if not username or not password:
-        return jsonify({"success": False, "message": "Username và Password không được để trống."}), 400
-
-    users = load_users()
-    user_info = users.get(username)
-
-    if user_info and verify_password(user_info["password_hash"], password):
+    username, password = data.get("username"), data.get("password")
+    user = mongo_db.users.find_one({"_id": username})
+    if user and verify_password(user["password_hash"], password):
         session['username'] = username
-        session.permanent = True  # Đặt session là permanent
-        log_action("User Login", f"User '{username}' logged in successfully.", username)
-        return jsonify({"success": True, "message": f"Đăng nhập thành công cho user '{username}'."}), 200
-    else:
-        log_action("User Login Failed", f"Failed login attempt for user '{username}'. Invalid credentials.", username)
-        return jsonify({"success": False, "message": "Username hoặc Password không đúng."}), 401
+        session.permanent = True
+        log_action("User Login", f"User '{username}' đăng nhập.", username)
+        return jsonify({"success": True, "message": "Đăng nhập thành công."})
+    log_action("Login Failed", f"Sai thông tin cho '{username}'", username)
+    return jsonify({"success": False, "message": "Sai username hoặc password."}), 401
 
-# ==== API Logout ====
 @app.route("/api/logout", methods=["POST"])
 @login_required
 def api_logout_user():
@@ -178,13 +148,8 @@ def upload_transaction():
 @login_required
 def get_inbox():
     user = session['username']
-    inbox = []
-    if os.path.exists(INBOX_FILE):
-        with open(INBOX_FILE, "r", encoding="utf-8") as ff:
-            try: inbox = json.load(ff)
-            except: inbox = []
-    files = [x for x in inbox if x['to'] == user]
-    return jsonify({"success": True, "inbox": files})
+    inbox = list(mongo_db.inbox.find({"to": user}, {"_id": 0}))
+    return jsonify({"success": True, "inbox": inbox})
 
 # ==== API Upload public key ====
 @app.route("/api/upload_pubkey", methods=["POST"])
@@ -260,10 +225,7 @@ def get_pubkey():
 @app.route("/api/get_log", methods=["GET"])
 @login_required
 def get_log():
-    if not os.path.exists(LOG_FILE):
-        return jsonify({"success": True, "log": ""})
-    with open(LOG_FILE, "r", encoding="utf-8") as f:
-        logs = f.read()
+    logs = list(mongo_db.logs.find({}, {"_id": 0}))
     return jsonify({"success": True, "log": logs})
 
 # Thêm route cho root path
