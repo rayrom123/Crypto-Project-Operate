@@ -189,7 +189,7 @@ def get_pubkey():
     if not pubkey:
         return jsonify({"success": False, "message": "Không tìm thấy public key"}), 404
 
-    return jsonify({"success": True, "public_key": pubkey['public_key']})
+    return jsonify({"success": True, "pubkey_pem": pubkey['public_key']})
 
 # ==== API get log ==== #
 @app.route("/api/get_log", methods=["GET"])

@@ -31,7 +31,7 @@
                 });
                 const dataLog = await resLog.json();
                 if (dataLog.success) {
-                    document.getElementById('logContent').innerText = dataLog.log || 'Không có log.';
+                    document.getElementById('logContent').innerText = JSON.stringify(dataLog.log, null, 2) || 'Không có log.';
                 } else {
                     document.getElementById('logContent').innerText = `Lỗi tải log: ${dataLog.message || 'Unknown error'}`;
                 }
