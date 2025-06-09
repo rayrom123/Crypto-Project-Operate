@@ -238,7 +238,7 @@ def download_transaction(filename):
 def get_pubkey():
     username = request.args.get("username")
     key_type = request.args.get("key_type")  # "RSA", "ECDSA", ...
-    user_request = session.get("username", "Guest")  # nếu có đăng nhập, log cả người lấy key
+    user_request = username
 
     if not username or not key_type:
         log_action("get_pubkey_fail", f"{user_request} lấy public key thiếu tham số", user_request)

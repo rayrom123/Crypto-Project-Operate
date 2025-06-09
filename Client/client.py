@@ -16,7 +16,7 @@ from dilithium_py.ml_dsa import ML_DSA_44
 app = Flask(__name__)
 CORS(app, supports_credentials=True)
 app.secret_key = "secret_key"  
-
+SERVER_BASE_URL = "https://crypto-project-operate.onrender.com"
 if getattr(sys, 'frozen', False):
     # Nếu ứng dụng đang chạy dưới dạng đóng gói (ví dụ: PyInstaller)
     # Lấy đường dẫn của file .exe
