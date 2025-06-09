@@ -5,7 +5,7 @@ from flask import Flask, request, jsonify, session, redirect, url_for, send_file
 from flask_cors import CORS
 from pymongo import MongoClient
 from bson.binary import Binary
-import bcrypt, base64
+import bcrypt, base64, hashlib
 from io import BytesIO
 from dotenv import load_dotenv
 
@@ -173,7 +173,8 @@ def upload_pubkey():
     )
 
     log_action("upload_pubkey", f"{session['username']} upload public key {key_type}", session['username'])
-    return jsonify({"success": True, "message": f"Đã upload public key cho {key_type}"})
+    fingerprint = hashlib.sha256(public_key).hexdigest()[:16]
+    return jsonify({"success": True, "message": f"Đã upload public key cho {key_type}", "fingerprint": fingerprint})
 
 # ==== API Get Public Key ==== #
 @app.route("/api/get_pubkey", methods=["GET"])
