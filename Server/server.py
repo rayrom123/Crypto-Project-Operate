@@ -1,12 +1,12 @@
 import os
-import json
 import datetime
 from functools import wraps
-from flask import Flask, request, jsonify, session, redirect, url_for, send_from_directory
+from flask import Flask, request, jsonify, session, redirect, url_for, send_file
 from flask_cors import CORS
 from pymongo import MongoClient
 from bson.binary import Binary
 import bcrypt, base64
+from io import BytesIO
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -51,15 +51,6 @@ def log_action(action_type: str, message: str, user: str = "Guest"):
     })
 
 # ==== User Management -> MongoDB ==== #
-def load_users():
-    users = mongo_db.users.find()
-    return {user["_id"]: user for user in users}
-
-def save_users(users_data):
-    mongo_db.users.delete_many({})
-    for username, info in users_data.items():
-        mongo_db.users.insert_one({"_id": username, **info})
-
 def verify_password(stored_password, provided_password):
     if isinstance(stored_password, str):
         stored_password = stored_password.encode('utf-8')
@@ -130,16 +121,16 @@ def upload_transaction():
     to_user = request.form.get("to_user")
     f = request.files['file']
     filename = f.filename
-    f.save(os.path.join(UPLOAD_DIR, filename))
-    # Ghi vào inbox
-    data = []
-    if os.path.exists(INBOX_FILE):
-        with open(INBOX_FILE, "r", encoding="utf-8") as ff:
-            try: data = json.load(ff)
-            except: data = []
-    data.append({"file": filename, "from": from_user, "to": to_user, "timestamp": datetime.datetime.now().isoformat()})
-    with open(INBOX_FILE, "w", encoding="utf-8") as ff:
-        json.dump(data, ff, indent=2, ensure_ascii=False)
+    file_content = f.read()
+
+    mongo_db.inbox.insert_one({
+        "file": filename,
+        "content": Binary(file_content),
+        "from": from_user,
+        "to": to_user,
+        "timestamp": datetime.datetime.utcnow()
+    })
+
     log_action("upload", f"{from_user} gửi file {filename} cho {to_user}", from_user)
     return jsonify({"success": True, "message": f"Đã upload file {filename} cho {to_user}"})
 
@@ -148,80 +139,59 @@ def upload_transaction():
 @login_required
 def get_inbox():
     user = session['username']
-    inbox = list(mongo_db.inbox.find({"to": user}, {"_id": 0}))
+    inbox = list(mongo_db.inbox.find({"to": user}, {"_id": 0, "content": 0}))
     return jsonify({"success": True, "inbox": inbox})
 
-# ==== API Upload public key ====
+# ==== API Download Transaction (phân quyền) ==== #
+@app.route("/api/download/transaction/<filename>", methods=["GET"])
+@login_required
+def download_transaction(filename):
+    user = session['username']
+    file_info = mongo_db.inbox.find_one({"file": filename, "$or": [{"to": user}, {"from": user}]})
+
+    if not file_info:
+        return jsonify({"success": False, "message": "Không có quyền tải file này"}), 403
+
+    return send_file(BytesIO(file_info['content']), download_name=filename, as_attachment=True)
+
+# ==== API Upload Public Key ==== #
 @app.route("/api/upload_pubkey", methods=["POST"])
 @login_required
 def upload_pubkey():
     data = request.get_json()
     username = data.get("username")
     key_type = data.get("key_type")
-    public_key = data.get("public_key")  # Dạng base64 string hoặc PEM string
+    public_key = data.get("public_key")
 
     if not (username and key_type and public_key):
         return jsonify({"success": False, "message": "Thiếu thông tin."}), 400
 
-    # Lưu public key thành file
-    ext = "pem" if key_type in ("ECDSA", "RSA") else "pub"
-    filename = f"{username}.{key_type.lower()}.pub.{ext}"
-    path = os.path.join(PUBKEY_DIR, filename)
-    try:
-        if key_type in ("ECDSA", "RSA"):
-            if public_key.startswith("-----"):
-                pem_bytes = public_key.encode('utf-8')
-            else:
-                pem_bytes = base64.b64decode(public_key)
-        else:
-            pem_bytes = base64.b64decode(public_key)
-        with open(path, "wb") as f:
-            f.write(pem_bytes)
-    except Exception as e:
-        return jsonify({"success": False, "message": f"Lỗi lưu file: {e}"}), 500
+    mongo_db.pubkeys.replace_one(
+        {"username": username, "key_type": key_type},
+        {"username": username, "key_type": key_type, "public_key": public_key},
+        upsert=True
+    )
 
-    log_action("upload_pubkey", f"{session['username']} upload public key {filename}", session['username'])
-    import hashlib
-    fingerprint = hashlib.sha256(pem_bytes).hexdigest()[:16]
-    return jsonify({"success": True, "message": f"Đã upload public key {filename}", "fingerprint": fingerprint})
+    log_action("upload_pubkey", f"{session['username']} upload public key {key_type}", session['username'])
+    return jsonify({"success": True, "message": f"Đã upload public key cho {key_type}"})
 
-# ==== API Download file giao dịch (phân quyền) ====
-@app.route("/api/download/transaction/<filename>", methods=["GET"])
-@login_required
-def download_transaction(filename):
-    inbox = []
-    if os.path.exists(INBOX_FILE):
-        with open(INBOX_FILE, "r", encoding="utf-8") as ff:
-            try: inbox = json.load(ff)
-            except: inbox = []
-    file_info = next((x for x in inbox if x['file'] == filename), None)
-    if not file_info or (session['username'] not in [file_info['to'], file_info['from']]):
-        return jsonify({"success": False, "message": "Không có quyền tải file này"}), 403
-    return send_from_directory(UPLOAD_DIR, filename, as_attachment=True)
-
+# ==== API Get Public Key ==== #
 @app.route("/api/get_pubkey", methods=["GET"])
 def get_pubkey():
     username = request.args.get("username")
-    key_type = request.args.get("key_type")  # "RSA", "ECDSA", ...
-    user_request = username
+    key_type = request.args.get("key_type")
 
     if not username or not key_type:
-        log_action("get_pubkey_fail", f"{user_request} lấy public key thiếu tham số", user_request)
         return jsonify({"success": False, "message": "Thiếu tham số"}), 400
 
-    ext = "pem" if key_type in ("RSA", "ECDSA") else "pub"
-    pubkey_path = os.path.join(PUBKEY_DIR, f"{username}.{key_type.lower()}.pub.{ext}")
-    if not os.path.exists(pubkey_path):
-        log_action("get_pubkey_fail", f"{user_request} lấy public key {username}.{key_type} KHÔNG TÌM THẤY", user_request)
+    pubkey = mongo_db.pubkeys.find_one({"username": username, "key_type": key_type})
+
+    if not pubkey:
         return jsonify({"success": False, "message": "Không tìm thấy public key"}), 404
 
-    with open(pubkey_path, "rb") as f:
-        pubkey_pem = f.read()
+    return jsonify({"success": True, "public_key": pubkey['public_key']})
 
-    log_action("get_pubkey", f"{user_request} truy vấn public key {username}.{key_type}", user_request)
-    return jsonify({"success": True, "pubkey_pem": pubkey_pem.decode()})
-
-# ==== API get log ====
+# ==== API get log ==== #
 @app.route("/api/get_log", methods=["GET"])
 @login_required
 def get_log():
