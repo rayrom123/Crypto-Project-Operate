@@ -189,7 +189,17 @@ def get_pubkey():
     if not pubkey:
         return jsonify({"success": False, "message": "Không tìm thấy public key"}), 404
 
-    return jsonify({"success": True, "pubkey_pem": pubkey['public_key']})
+        # Giả sử public_key_base64 = pubkey['public_key']
+    public_key_base64 = pubkey['public_key']
+
+    try:
+        # Decode base64 thành PEM string
+        public_key_pem = base64.b64decode(public_key_base64).decode('utf-8')
+    except Exception as e:
+        # Nếu không phải base64, trả về thẳng
+        public_key_pem = public_key_base64
+
+    return jsonify({"success": True, "pubkey_pem": public_key_pem})
 
 # ==== API get log ==== #
 @app.route("/api/get_log", methods=["GET"])
