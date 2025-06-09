@@ -87,12 +87,6 @@ def load_pem(filename, passphrase=None):
         return serialization.load_pem_private_key(content, password=passphrase)
     return content
 
-def load_pem_pub(filename):
-    if not os.path.exists(filename):
-        return None
-    with open(filename, "rb") as f:
-        return f.read()
-
 # ==== Load khóa riêng ML-DSA có passphrase ====
 
 def load_mldsa_priv(filename, passphrase=None):

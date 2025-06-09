@@ -9,7 +9,7 @@ from flask_cors import CORS
 from modules.crypto_utils import (
     ecdsa_keygen, rsa_keygen, mldsa_keygen, save_pem, load_pem, load_mldsa_priv,
     public_key_fingerprint, ecdsa_sign, ecdsa_verify, rsa_decrypt, aes_decrypt,
-    aes_encrypt, rsa_encrypt, load_pem_pub
+    aes_encrypt, rsa_encrypt
 )
 from dilithium_py.ml_dsa import ML_DSA_44
 
@@ -160,13 +160,15 @@ def sign_and_encrypt_transaction():
                 "algo": "ECDSA",
                 "signer_name": signer_name,
                 "signature": base64.b64encode(ecdsa_sig).decode(),
-                "public_key": base64.b64encode(ecdsa_pub_pem).decode()
+                "public_key": base64.b64encode(ecdsa_pub_pem).decode(),
+                "fingerprint": public_key_fingerprint(ecdsa_pub_pem)
             },
             {
                 "algo": "ML-DSA",
                 "signer_name": signer_name,
                 "signature": base64.b64encode(mldsa_sig).decode(),
-                "public_key": base64.b64encode(mldsa_pub).decode()
+                "public_key": base64.b64encode(mldsa_pub).decode(),
+                "fingerprint": public_key_fingerprint(mldsa_pub)
             }
         ]
     }
