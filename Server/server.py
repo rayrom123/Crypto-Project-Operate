@@ -5,10 +5,6 @@ from functools import wraps
 from flask import Flask, request, jsonify, session, redirect, url_for, send_from_directory
 from flask_cors import CORS
 import bcrypt, base64
-from dilithium_py.ml_dsa import ML_DSA_44
-from modules.crypto_utils import (
-    load_pem_pub, public_key_fingerprint, ecdsa_verify, rsa_encrypt, aes_encrypt
-)
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -156,26 +152,26 @@ def api_check_login_status():
         return jsonify({"logged_in": True, "username": session['username']}), 200
     return jsonify({"logged_in": False}), 200
 
-# # ==== API Upload Transaction (File giao dịch đã mã hóa) ====
-# @app.route("/api/upload_transaction", methods=["POST"])
-# @login_required
-# def upload_transaction():
-#     from_user = session['username']
-#     to_user = request.form.get("to_user")
-#     f = request.files['file']
-#     filename = f.filename
-#     f.save(os.path.join(UPLOAD_DIR, filename))
-#     # Ghi vào inbox
-#     data = []
-#     if os.path.exists(INBOX_FILE):
-#         with open(INBOX_FILE, "r", encoding="utf-8") as ff:
-#             try: data = json.load(ff)
-#             except: data = []
-#     data.append({"file": filename, "from": from_user, "to": to_user, "timestamp": datetime.datetime.now().isoformat()})
-#     with open(INBOX_FILE, "w", encoding="utf-8") as ff:
-#         json.dump(data, ff, indent=2, ensure_ascii=False)
-#     log_action("upload", f"{from_user} gửi file {filename} cho {to_user}", from_user)
-#     return jsonify({"success": True, "message": f"Đã upload file {filename} cho {to_user}"})
+# ==== API Upload Transaction (File giao dịch đã mã hóa) ====
+@app.route("/api/upload_transaction", methods=["POST"])
+@login_required
+def upload_transaction():
+    from_user = session['username']
+    to_user = request.form.get("to_user")
+    f = request.files['file']
+    filename = f.filename
+    f.save(os.path.join(UPLOAD_DIR, filename))
+    # Ghi vào inbox
+    data = []
+    if os.path.exists(INBOX_FILE):
+        with open(INBOX_FILE, "r", encoding="utf-8") as ff:
+            try: data = json.load(ff)
+            except: data = []
+    data.append({"file": filename, "from": from_user, "to": to_user, "timestamp": datetime.datetime.now().isoformat()})
+    with open(INBOX_FILE, "w", encoding="utf-8") as ff:
+        json.dump(data, ff, indent=2, ensure_ascii=False)
+    log_action("upload", f"{from_user} gửi file {filename} cho {to_user}", from_user)
+    return jsonify({"success": True, "message": f"Đã upload file {filename} cho {to_user}"})
 
 # ==== API get inbox (hộp thư đến) ====
 @app.route("/api/get_inbox", methods=["GET"])
@@ -238,103 +234,27 @@ def download_transaction(filename):
         return jsonify({"success": False, "message": "Không có quyền tải file này"}), 403
     return send_from_directory(UPLOAD_DIR, filename, as_attachment=True)
 
-# ==== Mã hóa AES + RSA ====
-@app.route("/api/sign_encrypt", methods=["POST"])
-@login_required
-def api_sign_encrypt():
-    unique_filename_on_server = request.form.get("unique_filename_on_server")
-    signer_name = request.form.get("signer_name")
-    ecdsa_signature_b64 = request.form.get("ecdsa_signature")
-    mldsa_signature_b64 = request.form.get("mldsa_signature")
-    ecdsa_pub_key_b64 = request.form.get("ecdsa_public_key")
-    mldsa_pub_key_b64 = request.form.get("mldsa_public_key")
-    receiver_name = request.form.get("receiver_name")
-    order_content_raw = request.form.get("order_content")
-    if not order_content_raw:
-        return jsonify({"success": False, "message": "Không nhận được nội dung giao dịch (order_content) từ client."}), 400
-    try:
-        order = json.loads(order_content_raw)
-    except Exception as e:
-        return jsonify({"success": False, "message": f"Nội dung order_content không hợp lệ: {e}"}), 400
+@app.route("/api/get_pubkey", methods=["GET"])
+def get_pubkey():
+    username = request.args.get("username")
+    key_type = request.args.get("key_type")  # "RSA", "ECDSA", ...
+    user_request = session.get("username", "Guest")  # nếu có đăng nhập, log cả người lấy key
 
-    data_bytes = json.dumps(order, ensure_ascii=False).encode()
+    if not username or not key_type:
+        log_action("get_pubkey_fail", f"{user_request} lấy public key thiếu tham số", user_request)
+        return jsonify({"success": False, "message": "Thiếu tham số"}), 400
 
-    # --- Xác thực chữ ký ---
-    try:
-        ecdsa_pub_bytes = base64.b64decode(ecdsa_pub_key_b64)
-        ecdsa_sig_bytes = base64.b64decode(ecdsa_signature_b64)
-        ecdsa_verified = ecdsa_verify(ecdsa_pub_bytes, data_bytes, ecdsa_sig_bytes)
-    except Exception as e:
-        return jsonify({"success": False, "message": f"Xác thực ECDSA thất bại: {e}"}), 400
+    ext = "pem" if key_type in ("RSA", "ECDSA") else "pub"
+    pubkey_path = os.path.join(PUBKEY_DIR, f"{username}.{key_type.lower()}.pub.{ext}")
+    if not os.path.exists(pubkey_path):
+        log_action("get_pubkey_fail", f"{user_request} lấy public key {username}.{key_type} KHÔNG TÌM THẤY", user_request)
+        return jsonify({"success": False, "message": "Không tìm thấy public key"}), 404
 
-    try:
-        mldsa_pub_bytes = base64.b64decode(mldsa_pub_key_b64)
-        mldsa_sig_bytes = base64.b64decode(mldsa_signature_b64)
-        mldsa_verified = ML_DSA_44.verify(mldsa_pub_bytes, data_bytes, mldsa_sig_bytes)
-    except Exception as e:
-        return jsonify({"success": False, "message": f"Xác thực ML-DSA thất bại: {e}"}), 400
+    with open(pubkey_path, "rb") as f:
+        pubkey_pem = f.read()
 
-    if not ecdsa_verified or not mldsa_verified:
-        return jsonify({"success": False, "message": "Chữ ký số không hợp lệ!"}), 400
-
-    # --- Đóng gói package để mã hóa ---
-    package = {
-        "order": order,
-        "signatures": [
-            {
-                "algo": "ECDSA",
-                "signer_name": signer_name,
-                "signature": ecdsa_signature_b64,
-                "public_key": ecdsa_pub_key_b64,
-                "fingerprint": public_key_fingerprint(ecdsa_pub_bytes)
-            },
-            {
-                "algo": "ML-DSA",
-                "signer_name": signer_name,
-                "signature": mldsa_signature_b64,
-                "public_key": mldsa_pub_key_b64,
-                "fingerprint": public_key_fingerprint(mldsa_pub_bytes)
-            }
-        ]
-    }
-    json_bytes = json.dumps(package, ensure_ascii=False, indent=2).encode()
-
-    # --- Mã hóa AES+RSA ---
-    rsa_pub = load_pem_pub(os.path.join(PUBKEY_DIR, f"{receiver_name}.rsa.pub.pem"))
-    if not rsa_pub:
-        return jsonify({"success": False, "message": "Không tìm thấy public key RSA của người nhận"}), 400
-    aes_key = os.urandom(32)
-    iv, aes_ciphertext = aes_encrypt(aes_key, json_bytes)
-    rsa_key_cipher = rsa_encrypt(rsa_pub, aes_key)
-
-    output_file_name = f'transaction_signed_{order["order_id"]}_{int(__import__("time").time())}.encrypted'
-    output_filepath = os.path.join(UPLOAD_DIR, output_file_name)
-    with open(output_filepath, "w", encoding="utf-8") as f:
-        json.dump({
-            "rsa_key_cipher": base64.b64encode(rsa_key_cipher).decode(),
-            "iv": base64.b64encode(iv).decode(),
-            "aes_ciphertext": base64.b64encode(aes_ciphertext).decode(),
-            "encrypted_for_receiver": receiver_name,
-            "original_order_filename": unique_filename_on_server  # Tham chiếu file gốc nếu muốn
-        }, f, indent=2, ensure_ascii=False)
-
-    # Ghi vào inbox tự động
-    data = []
-    if os.path.exists(INBOX_FILE):
-        with open(INBOX_FILE, "r", encoding="utf-8") as ff:
-            try: data = json.load(ff)
-            except: data = []
-    data.append({"file": output_file_name, "from": signer_name, "to": receiver_name, "timestamp": datetime.datetime.now().isoformat()})
-    with open(INBOX_FILE, "w", encoding="utf-8") as ff:
-        json.dump(data, ff, indent=2, ensure_ascii=False)
-
-    log_action("sign_encrypt", f"{signer_name} gửi và mã hóa giao dịch cho {receiver_name}: {output_file_name}", signer_name)
-
-    return jsonify({
-        "success": True,
-        "message": f"Đã ký, xác thực, mã hóa và lưu file: {output_file_name}",
-        "filename": output_file_name
-    })
+    log_action("get_pubkey", f"{user_request} truy vấn public key {username}.{key_type}", user_request)
+    return jsonify({"success": True, "pubkey_pem": pubkey_pem.decode()})
 
 # ==== API get log ====
 @app.route("/api/get_log", methods=["GET"])

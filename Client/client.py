@@ -2,12 +2,14 @@ import os
 import json
 import datetime
 import base64
+import requests
 from flask import Flask, request, jsonify, send_from_directory
 from cryptography.hazmat.primitives import serialization
 from flask_cors import CORS
 from modules.crypto_utils import (
     ecdsa_keygen, rsa_keygen, mldsa_keygen, save_pem, load_pem, load_mldsa_priv,
-    public_key_fingerprint, ecdsa_sign, ecdsa_verify, rsa_decrypt, aes_decrypt
+    public_key_fingerprint, ecdsa_sign, ecdsa_verify, rsa_decrypt, aes_decrypt,
+    aes_encrypt, rsa_encrypt, load_pem_pub
 )
 from dilithium_py.ml_dsa import ML_DSA_44
 
@@ -27,6 +29,16 @@ KEY_DIR = os.path.join(BASE_DIR, "user_keys")
 TRANSACTION_DIR = os.path.join(BASE_DIR, "transactions")
 os.makedirs(KEY_DIR, exist_ok=True)
 os.makedirs(TRANSACTION_DIR, exist_ok=True)
+
+def get_pubkey_live(server_base_url, username, key_type):
+    import requests
+    res = requests.get(f"{server_base_url}/api/get_pubkey", params={"username": username, "key_type": key_type})
+    data = res.json()
+    if data.get("success"):
+        pubkey_pem = data["pubkey_pem"]
+        return pubkey_pem.encode() if isinstance(pubkey_pem, str) else pubkey_pem
+    else:
+        raise Exception(data.get("message", "Không lấy được public key!"))
 
 @app.route("/")
 def home():
@@ -102,13 +114,14 @@ def api_create_transaction():
         return jsonify({"success": False, "message": f"Lỗi lưu file: {e}"}), 500
 
 # ---- API ký số & mã hóa ----
-@app.route("/api/sign_transaction", methods=["POST"])
-def sign_transaction():
+@app.route("/api/sign_and_encrypt_transaction", methods=["POST"])
+def sign_and_encrypt_transaction():
     req = request.get_json()
     data_to_sign = req["data_to_sign"]
     signer_name = req["signer_name"]
     ecdsa_passphrase = req["ecdsa_passphrase"]
     mldsa_passphrase = req["mldsa_passphrase"]
+    receiver_name = req["receiver_name"]
 
     data_bytes = json.dumps(data_to_sign, ensure_ascii=False).encode()
 
@@ -139,14 +152,58 @@ def sign_transaction():
     except Exception as e:
         return jsonify({"success": False, "message": f"Ký ML-DSA lỗi: {e}"}), 400
 
+    # --- Đóng gói package để mã hóa ---
+    package = {
+        "order": data_to_sign,
+        "signatures": [
+            {
+                "algo": "ECDSA",
+                "signer_name": signer_name,
+                "signature": base64.b64encode(ecdsa_sig).decode(),
+                "public_key": base64.b64encode(ecdsa_pub_pem).decode()
+            },
+            {
+                "algo": "ML-DSA",
+                "signer_name": signer_name,
+                "signature": base64.b64encode(mldsa_sig).decode(),
+                "public_key": base64.b64encode(mldsa_pub).decode()
+            }
+        ]
+    }
+    package_bytes = json.dumps(package, ensure_ascii=False, indent=2).encode()
+
+    # --- Mã hóa AES+RSA tại local ---
+    try:
+        aes_key = os.urandom(32)
+        iv, aes_ciphertext = aes_encrypt(aes_key, package_bytes)
+        rsa_pub = get_pubkey_live(SERVER_BASE_URL, receiver_name, "RSA")
+        if not rsa_pub:
+            return jsonify({"success": False, "message": "Không load được public key RSA của người nhận"}), 400
+        rsa_key_cipher = rsa_encrypt(rsa_pub, aes_key)
+    except Exception as e:
+        return jsonify({"success": False, "message": f"Mã hóa AES+RSA lỗi: {e}"}), 400
+
+    encrypted_package = {
+        "rsa_key_cipher": base64.b64encode(rsa_key_cipher).decode(),
+        "iv": base64.b64encode(iv).decode(),
+        "aes_ciphertext": base64.b64encode(aes_ciphertext).decode(),
+        "encrypted_for_receiver": receiver_name,
+        "order_id": data_to_sign["order_id"]
+    }
+
+    encrypted_filename = f'transaction_{data_to_sign["order_id"]}_{int(datetime.datetime.now().timestamp())}.encrypted'
+    encrypted_filepath = os.path.join(TRANSACTION_DIR, encrypted_filename)
+    try:
+        with open(encrypted_filepath, "w", encoding="utf-8") as f:
+            json.dump(encrypted_package, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        return jsonify({"success": False, "message": f"Lỗi lưu file đã mã hóa: {e}"}), 500
+
     return jsonify({
         "success": True,
-        "ecdsa_signature": base64.b64encode(ecdsa_sig).decode(),
-        "ecdsa_public_key": base64.b64encode(ecdsa_pub_pem).decode(),
-        "mldsa_signature": base64.b64encode(mldsa_sig).decode(),
-        "mldsa_public_key": base64.b64encode(mldsa_pub).decode()
+        "encrypted_data": encrypted_package,
+        "suggest_filename": encrypted_filename
     })
-
 # ---- API giải mã & xác thực ----
 @app.route("/decrypt_transaction", methods=["POST"])
 def decrypt_transaction():
