@@ -124,7 +124,7 @@
                 let backendData;
                 try { backendData = await backendRes.json(); } catch { backendData = {}; }
 
-                if (backendRes.ok && backendData.success) {
+                if (backendRes.ok && backendData.success && (backendData.fingerprint == clientData.fingerprint)) {
                     showMessage(
                         `✅ Đã sinh khóa trên client & lưu Public Key lên server.<br><b>Fingerprint:</b> <code>${backendData.fingerprint || ''}</code>`,
                         'success'

@@ -173,7 +173,7 @@ def upload_pubkey():
     )
 
     log_action("upload_pubkey", f"{session['username']} upload public key {key_type}", session['username'])
-    fingerprint = hashlib.sha256(public_key).hexdigest()[:16]
+    fingerprint = hashlib.sha256(base64.b64decode(public_key)).hexdigest()[:16]
     return jsonify({"success": True, "message": f"Đã upload public key cho {key_type}", "fingerprint": fingerprint})
 
 # ==== API Get Public Key ==== #
